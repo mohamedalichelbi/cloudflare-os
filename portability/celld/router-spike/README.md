@@ -19,6 +19,7 @@ celld application:
 cp .env.example .env
 # Edit .env, then:
 mise install
+mise run celld-build
 mise run celld-router-spike-deploy
 mise run celld-router-spike-serve
 ```

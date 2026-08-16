@@ -21,9 +21,13 @@ mise run celld-app-deploy
 mise run celld-app-serve
 ```
 
-`celld-app-serve` runs the sibling `../celld` checkout so local runtime
-compatibility fixes are exercised before they are available in a released
-celld binary. Build that repository independently with `mise run build`.
+All celld tasks use the sibling `../celld` checkout of
+`mohamedalichelbi/celld`. They reject a sibling checkout with a different
+`origin` remote. Build that fork with:
+
+```sh
+mise run celld-build
+```
 
 This is intentionally a live compatibility target. Bindings that celld does
 not implement yet are not silently mocked; the first real failure defines the

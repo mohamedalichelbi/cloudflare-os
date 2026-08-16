@@ -2,34 +2,62 @@
 node = "26.7.0"
 "npm:pnpm" = "11.17.0"
 "npm:esbuild" = "0.28.1"
-"github:denoland/celld" = "0.2.1"
 
 [env]
 _.file = { path = ".env", redact = true }
+CELLD_REPO = "{{config_root}}/../celld"
+CELLD_BIN = "{{config_root}}/../celld/target/lab/celld"
 
 [tasks.setup]
 description = "Install the Cloudflare OS workspace dependencies"
 run = "pnpm install"
 
+[tasks.celld-fork-check]
+description = "Verify that Cloudflare OS uses our sibling celld fork"
+run = '''
+test -d "$CELLD_REPO/.git" || {
+  echo "Clone https://github.com/mohamedalichelbi/celld beside cloudflare-os." >&2
+  exit 1
+}
+origin="$(git -C "$CELLD_REPO" remote get-url origin)"
+case "$origin" in
+  git@github.com:mohamedalichelbi/celld.git|https://github.com/mohamedalichelbi/celld.git) ;;
+  *)
+    echo "Expected the sibling celld origin to be mohamedalichelbi/celld; got: $origin" >&2
+    exit 1
+    ;;
+esac
+test -x "$CELLD_BIN" || {
+  echo "Build our celld fork first: mise run celld-build" >&2
+  exit 1
+}
+'''
+
+[tasks.celld-build]
+description = "Build our sibling celld fork with its own mise environment"
+run = 'mise -C "$CELLD_REPO" run build'
+
 [tasks.celld-router-spike-deploy]
 description = "Deploy the diagnostic backend, then the real router, to celld"
+depends = ["celld-fork-check"]
 run = '''
 test -n "${CELLD_BUCKET:-}" || {
   echo "Set CELLD_BUCKET in .env (use a dedicated bucket prefix for this spike)." >&2
   exit 1
 }
-celld deploy portability/celld/router-spike/backend
-celld deploy portability/celld/router-spike/router
+"$CELLD_BIN" deploy portability/celld/router-spike/backend
+"$CELLD_BIN" deploy portability/celld/router-spike/router
 '''
 
 [tasks.celld-router-spike-serve]
 description = "Serve the celld router spike on localhost:8790"
+depends = ["celld-fork-check"]
 run = '''
 test -n "${CELLD_BUCKET:-}" || {
   echo "Set CELLD_BUCKET in .env (use the same prefix used for deployment)." >&2
   exit 1
 }
-celld --bucket "$CELLD_BUCKET" --listen "${CELLD_LISTEN_ADDR:-127.0.0.1:8790}"
+"$CELLD_BIN" --bucket "$CELLD_BUCKET" --listen "${CELLD_LISTEN_ADDR:-127.0.0.1:8790}"
 '''
 
 [tasks.celld-router-spike-smoke]
@@ -47,34 +75,31 @@ node portability/celld/app/prepare.mjs
 
 [tasks.celld-app-check]
 description = "Bundle the real Cloudflare OS backend and router with celld without deploying"
-depends = ["celld-app-build"]
+depends = ["celld-fork-check", "celld-app-build"]
 run = '''
-celld deploy portability/celld/app/backend --dry-run
-celld deploy portability/celld/app/router --dry-run
+"$CELLD_BIN" deploy portability/celld/app/backend --dry-run
+"$CELLD_BIN" deploy portability/celld/app/router --dry-run
 '''
 
 [tasks.celld-app-deploy]
 description = "Build and deploy the real Cloudflare OS backend and router to celld"
-depends = ["celld-app-build"]
+depends = ["celld-fork-check", "celld-app-build"]
 run = '''
 test -n "${CELLD_BUCKET:-}" || {
   echo "Set CELLD_BUCKET in .env." >&2
   exit 1
 }
-celld deploy portability/celld/app/backend
-celld deploy portability/celld/app/router
+"$CELLD_BIN" deploy portability/celld/app/backend
+"$CELLD_BIN" deploy portability/celld/app/router
 '''
 
 [tasks.celld-app-serve]
 description = "Serve the real Cloudflare OS celld deployment on localhost:8790"
+depends = ["celld-fork-check"]
 run = '''
 test -n "${CELLD_BUCKET:-}" || {
   echo "Set CELLD_BUCKET in .env." >&2
   exit 1
 }
-test -x ../celld/target/lab/celld || {
-  echo "Build the sibling celld fork first: cd ../celld && mise run build" >&2
-  exit 1
-}
-../celld/target/lab/celld --bucket "$CELLD_BUCKET" --listen "${CELLD_LISTEN_ADDR:-127.0.0.1:8790}"
+"$CELLD_BIN" --bucket "$CELLD_BUCKET" --listen "${CELLD_LISTEN_ADDR:-127.0.0.1:8790}"
 '''
