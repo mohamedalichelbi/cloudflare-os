@@ -37,48 +37,20 @@ test -x "$CELLD_BIN" || {
 description = "Build our sibling celld fork with its own mise environment"
 run = 'mise -C "$CELLD_REPO" run build'
 
-[tasks.celld-router-spike-deploy]
-description = "Deploy the diagnostic backend, then the real router, to celld"
-depends = ["celld-fork-check"]
-run = '''
-test -n "${CELLD_BUCKET:-}" || {
-  echo "Set CELLD_BUCKET in .env (use a dedicated bucket prefix for this spike)." >&2
-  exit 1
-}
-"$CELLD_BIN" deploy portability/celld/router-spike/backend
-"$CELLD_BIN" deploy portability/celld/router-spike/router
-'''
-
-[tasks.celld-router-spike-serve]
-description = "Serve the celld router spike on localhost:8790"
-depends = ["celld-fork-check"]
-run = '''
-test -n "${CELLD_BUCKET:-}" || {
-  echo "Set CELLD_BUCKET in .env (use the same prefix used for deployment)." >&2
-  exit 1
-}
-"$CELLD_BIN" --bucket "$CELLD_BUCKET" --listen "${CELLD_LISTEN_ADDR:-127.0.0.1:8790}"
-'''
-
-[tasks.celld-router-spike-smoke]
-description = "Verify router assets and its service binding to the diagnostic backend"
-run = "node portability/celld/router-spike/smoke.mjs"
-
 [tasks.celld-app-build]
-description = "Build the real Cloudflare OS frontend and validated backend for celld"
+description = "Build the original Cloudflare OS frontend and backend"
 run = '''
 pnpm --filter @gadgets/typed-storage build
 pnpm --filter @gadgets/workshop-frontend exec vite build
 pnpm --filter @gadgets/workshop-backend build:worker
-node portability/celld/app/prepare.mjs
 '''
 
 [tasks.celld-app-check]
 description = "Bundle the real Cloudflare OS backend and router with celld without deploying"
 depends = ["celld-fork-check", "celld-app-build"]
 run = '''
-"$CELLD_BIN" deploy portability/celld/app/backend --dry-run
-"$CELLD_BIN" deploy portability/celld/app/router --dry-run
+"$CELLD_BIN" deploy packages/workshop-backend --dry-run
+"$CELLD_BIN" deploy packages/router --dry-run
 '''
 
 [tasks.celld-app-deploy]
@@ -89,8 +61,8 @@ test -n "${CELLD_BUCKET:-}" || {
   echo "Set CELLD_BUCKET in .env." >&2
   exit 1
 }
-"$CELLD_BIN" deploy portability/celld/app/backend
-"$CELLD_BIN" deploy portability/celld/app/router
+"$CELLD_BIN" deploy packages/workshop-backend
+"$CELLD_BIN" deploy packages/router
 '''
 
 [tasks.celld-app-serve]

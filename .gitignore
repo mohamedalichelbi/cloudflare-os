@@ -21,7 +21,6 @@ packages/workshop-backend/src/generated/browser-export-runtime.txt
 .wrangler/
 .env
 .mise.local.toml
-portability/celld/app/router/.generated/
 
 # Local dev secrets (loaded by run-dev-server.js)
 .dev.vars*
