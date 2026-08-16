@@ -1,0 +1,38 @@
+{
+  "name": "workshop-backend",
+  "main": "index.ts",
+  "compatibility_date": "2026-02-02",
+  "compatibility_flags": [
+    "allow_irrevocable_stub_storage",
+    "enhanced_error_serialization",
+    "global_fetch_strictly_public",
+    "nodejs_compat"
+  ],
+  "durable_objects": {
+    "bindings": [
+      { "name": "UserDurableObject", "class_name": "UserDurableObject" },
+      { "name": "OverseerDurableObject", "class_name": "OverseerDurableObject" },
+      { "name": "AdminSettings", "class_name": "AdminSettings" },
+      { "name": "PendingLogin", "class_name": "PendingLogin" },
+      { "name": "PORTABILITY_STORAGE", "class_name": "PortabilityStorage" }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v0",
+      "new_sqlite_classes": ["UserDurableObject", "OverseerDurableObject"]
+    },
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["AdminSettings"]
+    },
+    {
+      "tag": "v2",
+      "new_sqlite_classes": ["PendingLogin"]
+    },
+    {
+      "tag": "v3-portable-storage",
+      "new_sqlite_classes": ["PortabilityStorage"]
+    }
+  ]
+}
