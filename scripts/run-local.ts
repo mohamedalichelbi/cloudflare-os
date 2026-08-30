@@ -37,7 +37,7 @@ function runPnpm(args: string[]): void {
   execFileSync(command, argv, { stdio: "inherit", cwd: ROOT });
 }
 
-runPnpm(["install"]);
+if (process.env.SKIP_LOCAL_INSTALL !== "true") runPnpm(["install"]);
 runPnpm(["exec", "vp", "run", "--cache", "@gadgets/typed-storage#build"]);
 runPnpm(["exec", "vp", "run", "--cache", "@gadgets/workshop-frontend#build:assets"]);
 
