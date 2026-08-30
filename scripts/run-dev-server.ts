@@ -10,6 +10,7 @@
 //
 // Env:
 //   VITE_BACKEND_HOST=localhost:9000  Also pass --port 9000 to wrangler dev.
+//   WRANGLER_IP=0.0.0.0               Listen outside the local host, such as in a container.
 
 import {
   existsSync, readFileSync, writeFileSync, readdirSync, statSync,
@@ -551,6 +552,8 @@ if (wranglerPort) {
       "VITE_BACKEND_HOST did not include a port, so run-dev-server.ts could not derive " +
       "a Wrangler --port override.");
 }
+const wranglerIp = process.env.WRANGLER_IP?.trim();
+if (wranglerIp) args.push("--ip", wranglerIp);
 console.log(`\nStarting: wrangler dev ${args.join(" ")}\n`);
 
 // Reached directly for the same reason the generated custom builds are; falls back to `pnpm exec` if
