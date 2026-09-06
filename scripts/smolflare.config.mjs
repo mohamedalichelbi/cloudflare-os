@@ -1,3 +1,10 @@
+const DEFAULT_R2_BACKEND = "filesystem";
+const DEFAULT_R2_RETAIN_DELETED = true;
+const DEFAULT_SMOLFLARE_PACKAGE = "smolflare";
+const DEFAULT_SQLITE_BACKEND = "local-disk";
+const DEFAULT_SQLITE_PAGE_CACHE_BYTES = 10 * 1024 * 1024;
+const DEFAULT_SQLITE_SYNC_INTERVAL = "1m";
+
 function required(env, name) {
   const value = env[name]?.trim();
   if (!value) throw new Error(`Set ${name} in .env.`);
@@ -5,14 +12,18 @@ function required(env, name) {
 }
 
 function remoteOptions(env) {
+  const retainDeleted = env.SMOLFLARE_R2_RETAIN_DELETED?.trim();
   return {
     prefix: env.SMOLFLARE_R2_PREFIX?.trim() || undefined,
-    retainDeleted: env.SMOLFLARE_R2_RETAIN_DELETED !== "false",
+    retainDeleted:
+      retainDeleted === undefined
+        ? DEFAULT_R2_RETAIN_DELETED
+        : retainDeleted !== "false",
   };
 }
 
 function sqliteOptions(env) {
-  switch (env.SMOLFLARE_SQLITE_BACKEND?.trim() || "local-disk") {
+  switch (env.SMOLFLARE_SQLITE_BACKEND?.trim() || DEFAULT_SQLITE_BACKEND) {
     case "local-disk":
       return { type: "local-disk" };
     case "remote-ltx": {
@@ -25,8 +36,12 @@ function sqliteOptions(env) {
         extensionPath: required(env, "SMOLFLARE_SQLITE_EXTENSION_PATH"),
         replicaUrl: required(env, "SMOLFLARE_SQLITE_REPLICA_URL"),
         vfsName: env.SMOLFLARE_SQLITE_VFS_NAME?.trim() || undefined,
-        syncInterval: env.SMOLFLARE_SQLITE_SYNC_INTERVAL?.trim() || undefined,
-        pageCacheBytes: pageCacheBytes ? Number(pageCacheBytes) : undefined,
+        syncInterval:
+          env.SMOLFLARE_SQLITE_SYNC_INTERVAL?.trim() ||
+          DEFAULT_SQLITE_SYNC_INTERVAL,
+        pageCacheBytes: pageCacheBytes
+          ? Number(pageCacheBytes)
+          : DEFAULT_SQLITE_PAGE_CACHE_BYTES,
         cacheDirectory: env.SMOLFLARE_SQLITE_CACHE_DIRECTORY?.trim() || undefined,
       };
     }
@@ -38,11 +53,12 @@ function sqliteOptions(env) {
 }
 
 async function r2Options(env) {
-  const packageName = env.SMOLFLARE_PACKAGE?.trim() || "smolflare";
+  const packageName =
+    env.SMOLFLARE_PACKAGE?.trim() || DEFAULT_SMOLFLARE_PACKAGE;
   const { R2BucketAzureBlobStorage, R2BucketGCS, R2BucketS3, R2FileSystem } =
     await import(packageName);
 
-  switch (env.SMOLFLARE_R2_BACKEND?.trim() || "filesystem") {
+  switch (env.SMOLFLARE_R2_BACKEND?.trim() || DEFAULT_R2_BACKEND) {
     case "filesystem":
       return new R2FileSystem(env.SMOLFLARE_R2_PATH);
     case "gcs":

@@ -43,6 +43,20 @@ test("Smolflare storage configures remote LTX SQLite", async () => {
   });
 });
 
+test("Smolflare storage uses conservative remote SQLite defaults", async () => {
+  const config = await smolflareConfig({
+    env: {
+      SMOLFLARE_PACKAGE: fakePackage,
+      SMOLFLARE_SQLITE_BACKEND: "remote-ltx",
+      SMOLFLARE_SQLITE_EXTENSION_PATH: "/opt/smolflare/litestream-vfs.so",
+      SMOLFLARE_SQLITE_REPLICA_URL: "s3://sqlite/smolflare",
+    },
+  });
+
+  assert.equal(config.sqliteStorage.syncInterval, "1m");
+  assert.equal(config.sqliteStorage.pageCacheBytes, 10 * 1024 * 1024);
+});
+
 test("Smolflare storage rejects an invalid page cache size", async () => {
   await assert.rejects(
     smolflareConfig({
