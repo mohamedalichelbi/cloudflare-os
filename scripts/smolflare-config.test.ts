@@ -9,6 +9,10 @@ const fakePackage = `data:text/javascript,${encodeURIComponent(`
   export class R2BucketAzureBlobStorage {}
   export class R2BucketGCS {}
   export class R2BucketS3 {}
+  export class RemoteLtxSqliteStorage {
+    constructor(options) { this.options = options; this.type = "custom"; }
+    getStorage() {}
+  }
 `)}`;
 
 test("Smolflare storage uses local SQLite by default", async () => {
@@ -16,7 +20,7 @@ test("Smolflare storage uses local SQLite by default", async () => {
     env: { SMOLFLARE_PACKAGE: fakePackage },
   });
 
-  assert.deepEqual(config.sqliteStorage, { type: "local-disk" });
+  assert.equal(config.sqliteStorage, undefined);
 });
 
 test("Smolflare storage configures remote LTX SQLite", async () => {
@@ -32,8 +36,7 @@ test("Smolflare storage configures remote LTX SQLite", async () => {
     },
   });
 
-  assert.deepEqual(config.sqliteStorage, {
-    type: "remote-ltx",
+  assert.deepEqual(config.sqliteStorage.options, {
     extensionPath: "/opt/smolflare/litestream-vfs.so",
     replicaUrl: "s3://sqlite/smolflare",
     vfsName: undefined,
@@ -41,20 +44,6 @@ test("Smolflare storage configures remote LTX SQLite", async () => {
     pageCacheBytes: 4096,
     cacheDirectory: "/var/cache/smolflare/sqlite",
   });
-});
-
-test("Smolflare storage uses conservative remote SQLite defaults", async () => {
-  const config = await smolflareConfig({
-    env: {
-      SMOLFLARE_PACKAGE: fakePackage,
-      SMOLFLARE_SQLITE_BACKEND: "remote-ltx",
-      SMOLFLARE_SQLITE_EXTENSION_PATH: "/opt/smolflare/litestream-vfs.so",
-      SMOLFLARE_SQLITE_REPLICA_URL: "s3://sqlite/smolflare",
-    },
-  });
-
-  assert.equal(config.sqliteStorage.syncInterval, "1m");
-  assert.equal(config.sqliteStorage.pageCacheBytes, 10 * 1024 * 1024);
 });
 
 test("Smolflare storage rejects an invalid page cache size", async () => {

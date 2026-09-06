@@ -2,8 +2,6 @@ const DEFAULT_R2_BACKEND = "filesystem";
 const DEFAULT_R2_RETAIN_DELETED = true;
 const DEFAULT_SMOLFLARE_PACKAGE = "smolflare";
 const DEFAULT_SQLITE_BACKEND = "local-disk";
-const DEFAULT_SQLITE_PAGE_CACHE_BYTES = 10 * 1024 * 1024;
-const DEFAULT_SQLITE_SYNC_INTERVAL = "1m";
 
 function required(env, name) {
   const value = env[name]?.trim();
@@ -22,28 +20,23 @@ function remoteOptions(env) {
   };
 }
 
-function sqliteOptions(env) {
+function sqliteOptions(env, RemoteLtxSqliteStorage) {
   switch (env.SMOLFLARE_SQLITE_BACKEND?.trim() || DEFAULT_SQLITE_BACKEND) {
     case "local-disk":
-      return { type: "local-disk" };
+      return undefined;
     case "remote-ltx": {
       const pageCacheBytes = env.SMOLFLARE_SQLITE_PAGE_CACHE_BYTES?.trim();
       if (pageCacheBytes && !/^\d+$/.test(pageCacheBytes)) {
         throw new Error("SMOLFLARE_SQLITE_PAGE_CACHE_BYTES must be a whole number.");
       }
-      return {
-        type: "remote-ltx",
+      return new RemoteLtxSqliteStorage({
         extensionPath: required(env, "SMOLFLARE_SQLITE_EXTENSION_PATH"),
         replicaUrl: required(env, "SMOLFLARE_SQLITE_REPLICA_URL"),
         vfsName: env.SMOLFLARE_SQLITE_VFS_NAME?.trim() || undefined,
-        syncInterval:
-          env.SMOLFLARE_SQLITE_SYNC_INTERVAL?.trim() ||
-          DEFAULT_SQLITE_SYNC_INTERVAL,
-        pageCacheBytes: pageCacheBytes
-          ? Number(pageCacheBytes)
-          : DEFAULT_SQLITE_PAGE_CACHE_BYTES,
+        syncInterval: env.SMOLFLARE_SQLITE_SYNC_INTERVAL?.trim() || undefined,
+        pageCacheBytes: pageCacheBytes ? Number(pageCacheBytes) : undefined,
         cacheDirectory: env.SMOLFLARE_SQLITE_CACHE_DIRECTORY?.trim() || undefined,
-      };
+      });
     }
     default:
       throw new Error(
@@ -52,12 +45,9 @@ function sqliteOptions(env) {
   }
 }
 
-async function r2Options(env) {
-  const packageName =
-    env.SMOLFLARE_PACKAGE?.trim() || DEFAULT_SMOLFLARE_PACKAGE;
+function r2Options(env, implementations) {
   const { R2BucketAzureBlobStorage, R2BucketGCS, R2BucketS3, R2FileSystem } =
-    await import(packageName);
-
+    implementations;
   switch (env.SMOLFLARE_R2_BACKEND?.trim() || DEFAULT_R2_BACKEND) {
     case "filesystem":
       return new R2FileSystem(env.SMOLFLARE_R2_PATH);
@@ -97,8 +87,11 @@ async function r2Options(env) {
 
 /** Selects portable R2 and SQLite storage for local Wrangler. */
 export default async function smolflareConfig({ env }) {
+  const packageName =
+    env.SMOLFLARE_PACKAGE?.trim() || DEFAULT_SMOLFLARE_PACKAGE;
+  const implementations = await import(packageName);
   return {
-    r2BlobStorage: await r2Options(env),
-    sqliteStorage: sqliteOptions(env),
+    r2BlobStorage: r2Options(env, implementations),
+    sqliteStorage: sqliteOptions(env, implementations.RemoteLtxSqliteStorage),
   };
 }
