@@ -6,6 +6,7 @@
 // Flags:
 //   --use-workers-ai-binding   Include the Workers AI binding in
 //                               workshop-backend (requires Cloudflare login).
+//   --no-watch                 Do not start source rebuild watchers.
 //   --port PORT                 Listen on PORT instead of 8787. Overrides VITE_BACKEND_HOST.
 //
 // Env:
@@ -64,6 +65,7 @@ function loadDevVars(): void {
 loadDevVars();
 
 const useWorkersAi = process.argv.includes("--use-workers-ai-binding");
+const watchSources = !process.argv.includes("--no-watch");
 
 // In `run-local` mode the backend serves the pre-built frontend bundle as static assets (there is no
 // Vite dev server). In normal dev mode we leave assets unconfigured so the frontend is served by
@@ -349,7 +351,7 @@ try {
 
 // Watchers start only after those builds finish. Both watch modes run a full build before they
 // begin watching, so starting one earlier would put two processes on the same src/generated files.
-for (const gk of gatekeepers) {
+for (const gk of watchSources ? gatekeepers : []) {
   // Configurator UI (compiled by build-gatekeeper-configurator.ts). The pre-flight already ran this
   // same build, so each watcher's own initial build is a no-op write -- and it is what keeps the
   // watcher self-contained: it reads the sources itself, immediately before it starts watching them,
@@ -650,5 +652,7 @@ wranglerChild.on("exit", async (code, signal) => {
 // Poll the socket rather than parsing stdout for "Ready on", which would mean giving up
 // `stdio: "inherit"`. The deadline is a backstop so a server that never comes up does not leave the
 // watchers silently unstarted.
-await waitForPort(Number(wranglerPort ?? DEFAULT_WRANGLER_PORT), 60_000);
-if (wranglerChild.exitCode === null) startDeferredWatchers();
+if (watchSources) {
+  await waitForPort(Number(wranglerPort ?? DEFAULT_WRANGLER_PORT), 60_000);
+  if (wranglerChild.exitCode === null) startDeferredWatchers();
+}
