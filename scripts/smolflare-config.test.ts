@@ -7,7 +7,9 @@ const fakePackage = `data:text/javascript,${encodeURIComponent(`
     constructor(path) { this.path = path; }
   }
   export class R2BucketAzureBlobStorage {}
-  export class R2BucketGCS {}
+  export class R2BucketGCS {
+    constructor(options) { this.options = options; }
+  }
   export class R2BucketS3 {}
   export class RemoteLtxSqliteStorage {
     constructor(options) { this.options = options; this.type = "custom"; }
@@ -21,6 +23,22 @@ test("Smolflare storage uses local SQLite by default", async () => {
   });
 
   assert.equal(config.sqliteStorage, undefined);
+  assert.equal(config.kvBlobStorage, undefined);
+});
+
+test("remote KV bodies share bucket credentials but use a separate prefix", async () => {
+  const config = await smolflareConfig({
+    env: {
+      SMOLFLARE_PACKAGE: fakePackage,
+      SMOLFLARE_R2_BACKEND: "gcs",
+      SMOLFLARE_R2_GCS_BUCKET: "test-bucket",
+      SMOLFLARE_R2_PREFIX: "bodies",
+    },
+  });
+  assert.equal(config.r2BlobStorage.options.bucket, "test-bucket");
+  assert.equal(config.kvBlobStorage.options.bucket, "test-bucket");
+  assert.equal(config.r2BlobStorage.options.prefix, "bodies");
+  assert.equal(config.kvBlobStorage.options.prefix, "bodies/kv");
 });
 
 test("Smolflare storage configures remote LTX SQLite", async () => {

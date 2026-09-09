@@ -2,6 +2,7 @@ const DEFAULT_R2_BACKEND = "filesystem";
 const DEFAULT_R2_RETAIN_DELETED = true;
 const DEFAULT_SMOLFLARE_PACKAGE = "smolflare";
 const DEFAULT_SQLITE_BACKEND = "local-disk";
+const KV_BLOB_PREFIX = "kv";
 
 function required(env, name) {
   const value = env[name]?.trim();
@@ -45,18 +46,22 @@ function sqliteOptions(env, RemoteLtxSqliteStorage) {
   }
 }
 
-function r2Options(env, implementations) {
+function blobOptions(env, implementations, plugin) {
   const { R2BucketAzureBlobStorage, R2BucketGCS, R2BucketS3, R2FileSystem } =
     implementations;
+  const options = remoteOptions(env);
+  if (plugin === "kv") {
+    options.prefix = [options.prefix, KV_BLOB_PREFIX].filter(Boolean).join("/");
+  }
   switch (env.SMOLFLARE_R2_BACKEND?.trim() || DEFAULT_R2_BACKEND) {
     case "filesystem":
-      return new R2FileSystem(env.SMOLFLARE_R2_PATH);
+      return plugin === "kv" ? undefined : new R2FileSystem(env.SMOLFLARE_R2_PATH);
     case "gcs":
       return new R2BucketGCS({
         bucket: required(env, "SMOLFLARE_R2_GCS_BUCKET"),
         projectId: env.SMOLFLARE_R2_GCS_PROJECT_ID?.trim() || undefined,
         keyFilename: env.SMOLFLARE_R2_GCS_KEY_FILE?.trim() || undefined,
-        ...remoteOptions(env),
+        ...options,
       });
     case "s3":
       return new R2BucketS3({
@@ -67,7 +72,7 @@ function r2Options(env, implementations) {
         accessKeyId: env.SMOLFLARE_R2_S3_ACCESS_KEY_ID?.trim() || undefined,
         secretAccessKey:
           env.SMOLFLARE_R2_S3_SECRET_ACCESS_KEY?.trim() || undefined,
-        ...remoteOptions(env),
+        ...options,
       });
     case "azure":
       return new R2BucketAzureBlobStorage({
@@ -76,7 +81,7 @@ function r2Options(env, implementations) {
           env,
           "SMOLFLARE_R2_AZURE_CONNECTION_STRING"
         ),
-        ...remoteOptions(env),
+        ...options,
       });
     default:
       throw new Error(
@@ -85,13 +90,14 @@ function r2Options(env, implementations) {
   }
 }
 
-/** Selects portable R2 and SQLite storage for local Wrangler. */
+/** Selects portable blob and SQLite storage for local Wrangler. */
 export default async function smolflareConfig({ env }) {
   const packageName =
     env.SMOLFLARE_PACKAGE?.trim() || DEFAULT_SMOLFLARE_PACKAGE;
   const implementations = await import(packageName);
   return {
-    r2BlobStorage: r2Options(env, implementations),
+    r2BlobStorage: blobOptions(env, implementations, "r2"),
+    kvBlobStorage: blobOptions(env, implementations, "kv"),
     sqliteStorage: sqliteOptions(env, implementations.RemoteLtxSqliteStorage),
   };
 }
