@@ -7,6 +7,7 @@
 //   --use-workers-ai-binding   Include the Workers AI binding in
 //                               workshop-backend (requires Cloudflare login).
 //   --no-watch                 Do not start source rebuild watchers.
+//   --prepare-only             Generate build inputs and configs, then exit.
 //   --port PORT                 Listen on PORT instead of 8787. Overrides VITE_BACKEND_HOST.
 //
 // Env:
@@ -28,6 +29,7 @@ import { killProcessTree } from "./kill-process-tree.ts";
 import { pnpmCommand } from "./pnpm-command.ts";
 import type { ServiceBinding, WranglerBuild } from "./release/manifest-lib.ts";
 import { vpRunEnv } from "./vp/concurrency.ts";
+import { BACKEND_RUNTIME_VARS, SHARED_GATEKEEPER_CREDS, PASSTHROUGH_GATEKEEPER_VARS } from "./runtime-vars.ts";
 
 const SCRIPTS_DIR = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(SCRIPTS_DIR, "..");
@@ -65,7 +67,8 @@ function loadDevVars(): void {
 loadDevVars();
 
 const useWorkersAi = process.argv.includes("--use-workers-ai-binding");
-const watchSources = !process.argv.includes("--no-watch");
+const prepareOnly = process.argv.includes("--prepare-only");
+const watchSources = !prepareOnly && !process.argv.includes("--no-watch");
 
 // In `run-local` mode the backend serves the pre-built frontend bundle as static assets (there is no
 // Vite dev server). In normal dev mode we leave assets unconfigured so the frontend is served by
@@ -321,9 +324,9 @@ function runBuild(
 const VP_PREFLIGHT_BUILDS = [
   {
     label: "configurator UIs",
-    args: ["exec", "vp", "run", "-r", "--cache", "build:configurator", "--dev"],
+    args: ["exec", "vp", "run", "-r", "--cache", "build:configurator", ...(prepareOnly ? [] : ["--dev"])],
   },
-  { label: "gatekeeper app UIs", args: ["exec", "vp", "run", "-r", "--cache", "build:app:dev"] },
+  { label: "gatekeeper app UIs", args: ["exec", "vp", "run", "-r", "--cache", prepareOnly ? "build:app" : "build:app:dev"] },
 ];
 const vpEnv = vpRunEnv({ concurrentRuns: VP_PREFLIGHT_BUILDS.length });
 try {
@@ -467,35 +470,6 @@ function devBuildConfig(build: WranglerBuild | undefined, pkgDir: string): Wrang
 // and any creds already defined in the gatekeeper's own config still win.
 // ---------------------------------------------------------------------------
 
-// Maps a gatekeeper name to the shared env vars whose values seed its CLIENT_ID / CLIENT_SECRET.
-const SHARED_GATEKEEPER_CREDS: Record<string, { id: string; secret: string }> = {
-  "gatekeeper-github": { id: "GITHUB_CLIENT_ID", secret: "GITHUB_CLIENT_SECRET" },
-  "gatekeeper-google": { id: "GOOGLE_CLIENT_ID", secret: "GOOGLE_CLIENT_SECRET" },
-  "gatekeeper-cloudflare": { id: "CLOUDFLARE_OAUTH_CLIENT_ID", secret: "CLOUDFLARE_OAUTH_CLIENT_SECRET" },
-  "gatekeeper-supabase": { id: "SUPABASE_CLIENT_ID", secret: "SUPABASE_CLIENT_SECRET" },
-  "gatekeeper-notion": { id: "NOTION_CLIENT_ID", secret: "NOTION_CLIENT_SECRET" },
-  "gatekeeper-zoominfo": { id: "ZOOMINFO_CLIENT_ID", secret: "ZOOMINFO_CLIENT_SECRET" },
-  "gatekeeper-confluence": { id: "CONFLUENCE_CLIENT_ID", secret: "CONFLUENCE_CLIENT_SECRET" },
-  "gatekeeper-slack": { id: "SLACK_CLIENT_ID", secret: "SLACK_CLIENT_SECRET" },
-  "gatekeeper-linear": { id: "LINEAR_CLIENT_ID", secret: "LINEAR_CLIENT_SECRET" },
-  "gatekeeper-spotify": { id: "SPOTIFY_CLIENT_ID", secret: "SPOTIFY_CLIENT_SECRET" },
-};
-
-// Deployment-configured vars a gatekeeper reads that its committed `wrangler.jsonc` deliberately
-// leaves unset, passed through from the shell or the root `.dev.vars`.
-//
-// Without this the only way to point the portal connector somewhere for local testing is to edit a
-// tracked file, and a URL committed there becomes the default for everyone who deploys this repo.
-// `.dev.vars` is gitignored, so it cannot leave the machine. Secrets travel the same way
-// `CLIENT_SECRET` already does, via SHARED_GATEKEEPER_CREDS above.
-const PASSTHROUGH_GATEKEEPER_VARS: Record<string, string[]> = {
-  "gatekeeper-mcp-portal": [
-    "MCP_PORTAL_URL", "MCP_PORTAL_NAME", "MCP_PORTAL_AUTH", "MCP_PORTAL_TOKEN",
-    "MCP_PORTAL_TRUST_ANNOTATIONS", "MCP_PORTAL_HIDDEN_SERVER_IDS", "MCP_ALLOW_INSECURE",
-  ],
-  "gatekeeper-mcp": ["MCP_ALLOW_INSECURE"],
-};
-
 for (const gk of gatekeepers) {
   const srcPath = join(gk.dir, "wrangler.jsonc");
   const config = parse(readFileSync(srcPath, "utf8"));
@@ -536,25 +510,8 @@ for (const gk of gatekeepers) {
   config.vars = config.vars || {};
   config.vars.ADMINS = ["admin"];
 
-  // Pass through the optional OAuth sign-in / AI Gateway billing env vars from the shell
-  // environment, so you can run e.g.
-  //   ENABLE_CLOUDFLARE_LIMITS=true DAILY_LLM_CALL_LIMIT=1 pnpm dev-server
-  // without editing any config files.
-  const OPTIONAL_FEATURE_VARS = [
-    "DISABLE_PASSWORD_AUTH", "AUTH_GATEKEEPERS", "ENABLE_CLOUDFLARE_LIMITS", "PUBLIC_BASE_URL",
-    "DAILY_LLM_CALL_LIMIT", "MINIMUM_CLOUDFLARE_BALANCE",
-    // Platform AI Gateway — makes the cross-provider model catalog available. CF_AI_GATEWAY
-    // always needs CF_AI_GATEWAY_ACCOUNT_ID plus one transport: the WORKERS_AI binding
-    // (start with --use-workers-ai-binding; CF_AI_GATEWAY_USE_BINDING=false opts out, e.g.
-    // when the gateway lives in a different account than the dev binding) or
-    // CF_AI_GATEWAY_API_TOKEN over HTTPS. The google provider can't ride the binding and
-    // needs the token even when the binding is present.
-    "CF_AI_GATEWAY", "CF_AI_GATEWAY_PROVIDERS", "CF_AI_GATEWAY_ACCOUNT_ID",
-    "CF_AI_GATEWAY_API_TOKEN", "CF_AI_GATEWAY_USE_BINDING",
-  ];
-  // OAuth app credentials (GOOGLE_/GITHUB_/CLOUDFLARE_OAUTH_*) are NOT passed to the backend anymore;
-  // they are injected into the gatekeeper Workers (see SHARED_GATEKEEPER_CREDS below).
-  for (const name of OPTIONAL_FEATURE_VARS) {
+  // Apply backend variables. OAuth credentials go to the gatekeepers.
+  for (const name of BACKEND_RUNTIME_VARS) {
     if (process.env[name] !== undefined) config.vars[name] = process.env[name];
   }
 
@@ -604,6 +561,8 @@ const configs = [
   join("packages", "workshop-backend", "wrangler.dev.jsonc"),
   ...gatekeepers.map(gk => join(gk.dir, "wrangler.dev.jsonc")),
 ];
+
+if (prepareOnly) process.exit(0);
 
 const args = configs.flatMap(c => ["-c", c]);
 if (wranglerPort) {
